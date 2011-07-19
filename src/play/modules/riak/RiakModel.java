@@ -39,13 +39,13 @@ public class RiakModel {
 		this.obj = obj;
 	}
 	
-	public Map<String,String> getUserMeta(){
-		return obj.getUsermeta();
-	}
+	//public Map<String,String> getUserMeta(){
+	//	return obj.getUsermeta();
+	//}
 	
-	public void setUserMeta(Map<String,String> usermeta){
-		obj.setUserMeta(usermeta);
-	}	
+	//public void setUserMeta(Map<String,String> usermeta){
+	//	obj.setUserMeta(usermeta);
+	//}	
 	
 	public static String generateUID(){
 		return  String.valueOf(UUID.randomUUID());
@@ -83,7 +83,7 @@ public class RiakModel {
 			
 			this.obj = new RiakObject(path.getBucket(), path.getValue(), jsonValue);
 			if(o != null && o.getLinks() != null)
-				this.obj.setLinks(o.getLinks());
+				;//this.obj.setLinks(o.getLinks());
 			try {
 				riak.store(this.obj);
 				this.setObj(this.obj);
