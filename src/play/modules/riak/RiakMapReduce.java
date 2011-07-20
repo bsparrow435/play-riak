@@ -7,11 +7,13 @@ import java.util.Map;
 
 import org.apache.commons.io.FileUtils;
 
-import com.basho.riak.pbc.MapReduceResponseSource;
-import com.basho.riak.pbc.RequestMeta;
-import com.basho.riak.pbc.mapreduce.JavascriptFunction;
-import com.basho.riak.pbc.mapreduce.MapReduceBuilder;
-import com.basho.riak.pbc.mapreduce.MapReduceResponse;
+import com.basho.riak.client.IRiakClient;
+import com.basho.riak.client.RiakException;
+import com.basho.riak.client.query.MapReduce;
+import com.basho.riak.client.query.MapReduceResult;
+import com.basho.riak.client.query.functions.NamedJSFunction;
+import com.basho.riak.client.query.functions.JSSourceFunction;
+
 import com.google.protobuf.ByteString;
 
 import play.Logger;
@@ -84,25 +86,21 @@ public class RiakMapReduce {
     }
 
 	public static long count(Class clazz){
-		
-		MapReduceBuilder builder = new MapReduceBuilder();
-		builder.setBucket(RiakPlugin.getBucketName(clazz));
-		builder.setRiakClient(RiakPlugin.riak);
-		builder.map(JavascriptFunction.anon(RiakMapReduce.function.get("count")), false);
-		builder.reduce(JavascriptFunction.named("Riak.reduceSum"),true);
+		String bucket = RiakPlugin.getBucketName(clazz);
+        IRiakClient client = RiakPlugin.riak;
+
+		MapReduce mr = client.mapReduce(bucket)
+            .addMapPhase(new JSSourceFunction(RiakMapReduce.function.get("count")), false)
+		    .addReducePhase(new NamedJSFunction("Riak.reduceSum"), true);
 		
 		try {
-			MapReduceResponseSource mrs = builder.submit(new RequestMeta().contentType("application/json"));
-			while(mrs.hasNext()){
-				MapReduceResponse mr = mrs.next();
-				ByteString bs = mr.getContent();
-				if(bs != null && !bs.isEmpty()){
-					String resString = bs.toStringUtf8();
-					resString = resString.substring(1, resString.length() -1);
-					return Long.parseLong(resString);
-				}
-			}			
-		}catch (IOException e) {
+			MapReduceResult mrs = mr.execute();
+
+            for (Long l : mrs.getResult(Long.class)) {
+                if(l != null) return l;
+            }
+		
+		}catch (RiakException e) {
 			e.printStackTrace();
 		}		
 		return -1;

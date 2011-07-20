@@ -16,26 +16,38 @@ import play.Logger;
 import play.Play;
 import play.classloading.ApplicationClasses.ApplicationClass;
 
-import com.basho.riak.pbc.KeySource;
-import com.basho.riak.pbc.MapReduceResponseSource;
-import com.basho.riak.pbc.RequestMeta;
-import com.basho.riak.pbc.RiakLink;
-import com.basho.riak.pbc.RiakObject;
-import com.basho.riak.pbc.mapreduce.JavascriptFunction;
-import com.basho.riak.pbc.mapreduce.MapReduceBuilder;
-import com.basho.riak.pbc.mapreduce.MapReduceResponse;
+import com.basho.riak.client.IRiakClient;
+import com.basho.riak.client.IRiakObject;
+import com.basho.riak.client.RiakException;
+import com.basho.riak.client.builders.RiakObjectBuilder;
+import com.basho.riak.client.RiakLink;
+
+import com.basho.riak.client.query.MapReduce;
+import com.basho.riak.client.query.MapReduceResult;
+import com.basho.riak.client.query.functions.NamedJSFunction;
+import com.basho.riak.client.query.functions.JSSourceFunction;
+
+//import com.basho.riak.pbc.KeySource;
+//import com.basho.riak.pbc.MapReduceResponseSource;
+//import com.basho.riak.pbc.RequestMeta;
+//import com.basho.riak.pbc.RiakLink;
+//import com.basho.riak.pbc.RiakObject;
+//import com.basho.riak.pbc.mapreduce.JavascriptFunction;
+//import com.basho.riak.pbc.mapreduce.MapReduceBuilder;
+//import com.basho.riak.pbc.mapreduce.MapReduceResponse;
+
 import com.google.gson.Gson;
 import com.google.protobuf.ByteString;
 
 public class RiakModel {
 	
 	// Raw object
-	private RiakObject obj;
+	private IRiakObject obj;
 	
-	public RiakObject getObj(){
+	public IRiakObject getObj(){
 		return obj;
 	}
-	public void setObj(RiakObject obj){
+	public void setObj(IRiakObject obj){
 		this.obj = obj;
 	}
 	
@@ -52,7 +64,7 @@ public class RiakModel {
 	}
 
 	public String toJSON(){
-		RiakObject o = null;
+		IRiakObject o = null;
 		// Hack to prevent serialisation of obj
 		if(this.obj != null){
 			o = this.obj;
@@ -67,29 +79,40 @@ public class RiakModel {
 	public boolean save() {
 		Logger.debug("RiakModel save %s", this.toString());
 
-		RiakObject o = null;
+		IRiakObject o = null;
 		// Hack to prevent serialisation of obj
 		if(this.obj != null){
 			o = this.obj;
 			
 		}
 		this.obj = null;
-
+		
 		String jsonValue = new Gson().toJson(this);
 		RiakPath path = this.getPath();
-
+		
 		if(path != null){
 			Logger.debug("Create new object %s, %s", path.getBucket(), path.getValue());
 			
-			this.obj = new RiakObject(path.getBucket(), path.getValue(), jsonValue);
+			RiakObjectBuilder builder = this.obj != null
+				? RiakObjectBuilder.from(this.obj)
+				: RiakObjectBuilder.newBuilder(path.getBucket(), path.getKey());
+				
+			builder = builder.withValue(jsonValue).withContentType("text/json");
+			
 			if(o != null && o.getLinks() != null)
-				;//this.obj.setLinks(o.getLinks());
+				builder.withLinks(o.getLinks());
+			
+			this.obj = builder.build();
+			
 			try {
-				riak.store(this.obj);
-				this.setObj(this.obj);
+				this.obj = riak.fetchBucket(path.getBucket())
+					.execute()
+					.store(this.obj)
+					.execute();
+				;
 				return true;
-			} catch (IOException e) {
-				Logger.error("Error during save of %s", jsonValue);
+			} catch (RiakException e) {
+				Logger.error("Error during save of %s: %s", path.getKey(), jsonValue);
 				e.printStackTrace();
 				return false;
 			}
@@ -122,31 +145,26 @@ public class RiakModel {
 	}
 	
 	public static List findOrderByDate(Class clazz, Type returnType, boolean reverse){
+		String bucket = RiakPlugin.getBucketName(clazz);
+        IRiakClient client = RiakPlugin.riak;
 
-		MapReduceBuilder builder = new MapReduceBuilder(RiakPlugin.riak);
-		builder.setBucket(RiakPlugin.getBucketName(clazz));
-		builder.map(JavascriptFunction.anon(RiakMapReduce.function.get("orderByCreationDateMap")), false);
+		MapReduce mr = client.mapReduce(bucket)
+			.addMapPhase(new JSSourceFunction(RiakMapReduce.function.get("orderByCreationDateMap")), false);
 		if(reverse)
-			builder.reduce(JavascriptFunction.anon(RiakMapReduce.function.get("orderByCreateDateDescReduce")), false);
+			mr = mr.addReducePhase(new JSSourceFunction(RiakMapReduce.function.get("orderByCreateDateDescReduce")), false);
 		else
-			builder.reduce(JavascriptFunction.anon(RiakMapReduce.function.get("orderByCreateDateAscReduce")), false);
+			mr = mr.addReducePhase(new JSSourceFunction(RiakMapReduce.function.get("orderByCreateDateAscReduce")), false);
 		
-		builder.reduce(JavascriptFunction.anon(RiakMapReduce.function.get("cleanReduce")), true);
+		mr = mr.addReducePhase(new JSSourceFunction(RiakMapReduce.function.get("cleanReduce")), true);
 		try {
-			MapReduceResponseSource mrs = builder.submit(new RequestMeta().contentType("application/json"));
-			String res = "";
-			while(mrs.hasNext()){
-				MapReduceResponse mr = mrs.next();
-				ByteString bs = mr.getContent();
-				if(bs != null && !bs.isEmpty())
-					res += bs.toStringUtf8();
-			}
+			MapReduceResult mrs = mr.execute();
+			String res = mrs.getResultRaw();
 			
 			if(!res.isEmpty()){
 				List jsonResult = new Gson().fromJson(res, returnType);
 				return jsonResult;
 			}
-		}catch (IOException e) {
+		}catch (RiakException e) {
 			Logger.error("Error during findOrderByDate");
 			e.printStackTrace();
 		}	
@@ -162,18 +180,15 @@ public class RiakModel {
 		throw new UnsupportedOperationException("Please annotate your model with @RiakEntity annotation.");
 	}
 	
-	public static List<String> findKeys(Class clazz){
+	public static Iterable<String> findKeys(Class clazz){
 		return findKeys(RiakPlugin.getBucketName(clazz)); 
 	}
-	public static List<String> findKeys(String bucket){
+	public static Iterable<String> findKeys(String bucket){
 		try {
-			KeySource keySource = riak.listKeys(ByteString.copyFromUtf8(bucket));
-			List<String> list = new ArrayList<String>();
-			for (ByteString bs : keySource) {
-				list.add(bs.toStringUtf8());
-			}
-			return list;
-		} catch (IOException e) {
+			return riak.fetchBucket(bucket)
+				.execute()
+				.keys();
+		} catch (RiakException e) {
 			Logger.error("Error during listKeys for bucket: %s", bucket);
 			e.printStackTrace();
 			return null;
@@ -192,8 +207,11 @@ public class RiakModel {
 	}
 	public static void delete(String bucket, String key){
 		try {
-			riak.delete(bucket, key);
-		} catch (IOException e) {
+			riak.fetchBucket(bucket)
+				.execute()
+				.delete(key)
+				.execute();
+		} catch (RiakException e) {
 			Logger.error("Error during deletion of bucket: %s, key: %s", bucket, key);
 			e.printStackTrace();
 		}	
@@ -211,7 +229,7 @@ public class RiakModel {
 		deleteAll(RiakPlugin.getBucketName(clazz));
 	}
 	public static void deleteAll(String bucket){
-		List<String> keys = RiakModel.findKeys(bucket);
+		Iterable<String> keys = RiakModel.findKeys(bucket);
 		
 		for(String key: keys){
 			RiakModel.delete(bucket, key);
@@ -225,8 +243,8 @@ public class RiakModel {
 		Set<String> keys = RiakPlugin.bucketMap.keySet();
 		for (RiakLink link : links) {
 			
-			if(link.getTag().toStringUtf8().equals(tag)){
-				String bucket  = link.getBucket().toStringUtf8();	
+			if(link.getTag().equals(tag)){
+				String bucket  = link.getBucket();	
 				
 				for(String key: keys){
 					RiakKey riakKey = RiakPlugin.bucketMap.get(key);
@@ -234,7 +252,7 @@ public class RiakModel {
 						try{
 							ApplicationClass clazz = Play.classes.getApplicationClass(key);
 							Method m = clazz.javaClass.getMethod("find", new Class[]{String.class, String.class});
-							RiakModel r = (RiakModel)m.invoke(new Object(), bucket, link.getKey().toStringUtf8());						
+							RiakModel r = (RiakModel)m.invoke(new Object(), bucket, link.getKey());						
 							result.add(r);
 						} catch (Exception e) {
 							Logger.error("Errror during reflection");
@@ -258,7 +276,7 @@ public class RiakModel {
 		
 		Set<String> keys = RiakPlugin.bucketMap.keySet();
 		for (RiakLink link : links) {
-			String bucket  = link.getBucket().toStringUtf8();	
+			String bucket  = link.getBucket();	
 			
 			for(String key: keys){
 				RiakKey riakKey = RiakPlugin.bucketMap.get(key);
@@ -267,7 +285,7 @@ public class RiakModel {
 					try{
 						ApplicationClass clazz = Play.classes.getApplicationClass(key);
 						Method m = clazz.javaClass.getMethod("find", new Class[]{String.class, String.class});
-						RiakModel r = (RiakModel)m.invoke(new Object(), bucket, link.getKey().toStringUtf8());						
+						RiakModel r = (RiakModel)m.invoke(new Object(), bucket, link.getKey());						
 						result.add(r);
 					} catch (Exception e) {
 						Logger.error("Errror during reflection");
@@ -295,7 +313,7 @@ public class RiakModel {
 		if(this.obj != null){
 			List<RiakLink> links = obj.getLinks();
 			for (RiakLink link : links) {
-				if(link.getTag().toStringUtf8().equals(tag)){
+				if(link.getTag().equals(tag)){
 					res.add(link);
 				}
 			}
@@ -308,7 +326,7 @@ public class RiakModel {
 		this.addLink(RiakPlugin.getBucketName(clazz), key, tag);
 	}	
 	public void addLink(String bucket, String key, String tag){
-		obj.addLink(tag, bucket, key);
+		obj.addLink(new RiakLink(tag, bucket, key));
 	}
 	
 	public static <T extends RiakModel> List<T> jsonToList(String json, Type listType){
@@ -317,21 +335,17 @@ public class RiakModel {
 	
 	public static List orderBy(Class clazz, String field, Boolean reverse , Type listType){
 		Object[] args = {field, reverse};
-		MapReduceBuilder builder = new MapReduceBuilder();
-		builder.setBucket(RiakPlugin.getBucketName(clazz));
-		builder.setRiakClient(play.modules.riak.RiakPlugin.riak);
-		builder.map(JavascriptFunction.named("Riak.mapValuesJson"), false);
-		builder.reduce(JavascriptFunction.anon(RiakMapReduce.function.get("orderByReduce")), args, true);
+		String bucket = RiakPlugin.getBucketName(clazz);
+        IRiakClient client = RiakPlugin.riak;
+
+		MapReduce mr = client.mapReduce(bucket)
+			.addMapPhase(new NamedJSFunction("Riak.mapValuesJson"), false)
+			.addReducePhase(new JSSourceFunction(RiakMapReduce.function.get("orderByReduce")), args, true);
 		try {
-			MapReduceResponseSource mrs = builder.submit(new RequestMeta().contentType("application/json"));
-			while(mrs.hasNext()){
-				MapReduceResponse mr = mrs.next();
-				ByteString bs = mr.getContent();
-				if(bs != null && !bs.isEmpty()){
-					return new com.google.gson.Gson().fromJson(bs.toStringUtf8(), listType);
-				}
-			}			
-		}catch (IOException e) {
+			MapReduceResult mrs = mr.execute();
+			String res = mrs.getResultRaw();
+			return new com.google.gson.Gson().fromJson(res, listType);
+		}catch (RiakException e) {
 			e.printStackTrace();
 		}				
 		

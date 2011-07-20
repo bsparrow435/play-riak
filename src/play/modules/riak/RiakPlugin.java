@@ -9,7 +9,9 @@ import play.Play;
 import play.PlayPlugin;
 import play.classloading.ApplicationClasses.ApplicationClass;
 
-import com.basho.riak.pbc.RiakClient;
+import com.basho.riak.client.RiakFactory;
+import com.basho.riak.client.IRiakClient;
+import com.basho.riak.client.RiakException;
 
 public class RiakPlugin extends PlayPlugin{
 	
@@ -30,7 +32,7 @@ public class RiakPlugin extends PlayPlugin{
 	/**
 	 * main client
 	 */
-	public static RiakClient riak = null;
+	public static IRiakClient riak = null;
 	
 	public static String DEFAULT_MODEL_PREFIX = "models.riak.";
 	public static String MODEL_PREFIX;
@@ -65,10 +67,10 @@ public class RiakPlugin extends PlayPlugin{
 		
 		try {
 			Logger.info("Init riak client (url: %s port: %s )", RIAK_URL, RIAK_PORT);
-			riak = new RiakClient(RIAK_URL, RIAK_PORT);
-			riak.ping();
+			riak = RiakFactory.pbcClient(RIAK_URL, RIAK_PORT);
+			riak.getClientId();
 			return true;
-		} catch (IOException e) {
+		} catch (RiakException e) {
 			e.printStackTrace();
 			return false;
 		}
