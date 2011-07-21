@@ -48,15 +48,14 @@ public class RiakEnhancer extends Enhancer {
 		 				
 		CtMethod find = CtMethod.make("public static RiakModel find(String bucket, String key){" +
 			"try {" +
-				"com.basho.riak.pbc.RiakObject[] ro = play.modules.riak.RiakPlugin.riak.fetch(bucket, key);" +
-				"if(ro.length > 0){" +
-					"com.basho.riak.pbc.RiakObject o = ro[0];"+
-					entityName +" e = (" + entityName + ")new com.google.gson.Gson().fromJson(o.getValue().toStringUtf8(), " +
+				"com.basho.riak.client.IRiakObject ro = play.modules.riak.RiakPlugin.riak.fetchBucket(bucket).execute().fetch(key).execute();" +
+				"if(ro != null){" +
+					entityName +" e = (" + entityName + ")new com.google.gson.Gson().fromJson(ro.getValueAsString(), " +
 					entityName +".class);" +
-					"e.setObj(o);" +
+					"e.setObj(ro);" +
 					"return e;" +
 				"}" +
-			"} catch(java.io.IOException e1){" +
+			"} catch(com.basho.riak.client.RiakException e1){" +
 				"e1.printStackTrace();" +
 			"}"+
 			"return null;}", ctClass);
@@ -90,26 +89,17 @@ public class RiakEnhancer extends Enhancer {
 				"array[0] = start;"+
 				"array[1] = end;"+
 			"}"+
-			"com.basho.riak.pbc.mapreduce.MapReduceBuilder builder = new com.basho.riak.pbc.mapreduce.MapReduceBuilder();"+
-			"builder.setBucket(play.modules.riak.RiakPlugin.getBucketName(clazz));"+
-			"builder.setRiakClient(play.modules.riak.RiakPlugin.riak);"+
-			"builder.map(com.basho.riak.pbc.mapreduce.JavascriptFunction.named(\"Riak.mapValuesJson\"), false);"+
-			"builder.reduce(com.basho.riak.pbc.mapreduce.JavascriptFunction.named(\"Riak.reduceSlice\"), array, true);"+
+            "com.basho.riak.client.query.MapReduce mr = play.modules.riak.RiakPlugin.riak.mapReduce(play.modules.riak.RiakPlugin.getBucketName(clazz))"+
+			    ".addMapPhase(new com.basho.riak.client.query.functions.NamedJSFunction(\"Riak.mapValuesJson\"), false)"+
+			    ".addReducePhase(new com.basho.riak.client.query.functions.NamedJSFunction(\"Riak.reduceSlice\"), true);"+
 			"try {"+
-				"com.basho.riak.pbc.MapReduceResponseSource mrs = builder.submit(new com.basho.riak.pbc.RequestMeta().contentType(\"application/json\"));"+
-				"while(mrs.hasNext()){"+
-					"com.basho.riak.pbc.mapreduce.MapReduceResponse mr = mrs.next();"+
-					"com.google.protobuf.ByteString bs = mr.getContent();"+
-					"String res = \"\";"+
-					"if(bs != null && !bs.isEmpty())"+
-						"res = bs.toStringUtf8();"+
-				
-					"if(!res.isEmpty()){"+
-						"java.util.List jsonResult = new com.google.gson.Gson().fromJson(res, returnType);"+
-						"return jsonResult;"+
-					"}"+				
+				"com.basho.riak.client.query.MapReduceResult mrs = mr.execute();"+
+                "String res = mrs.getResultRaw();"+
+                "if(!res.isEmpty()){"+
+                    "java.util.List jsonResult = new com.google.gson.Gson().fromJson(res, returnType);"+
+                    "return jsonResult;"+				
 				"}"+			
-			"}catch (java.io.IOException e) {"+
+			"}catch (com.basho.riak.client.RiakException e) {"+
 				"e.printStackTrace();"+
 			"}"+
 			"return null;}",ctClass);

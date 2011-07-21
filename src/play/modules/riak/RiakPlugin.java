@@ -69,6 +69,7 @@ public class RiakPlugin extends PlayPlugin{
 			Logger.info("Init riak client (url: %s port: %s )", RIAK_URL, RIAK_PORT);
 			riak = RiakFactory.pbcClient(RIAK_URL, RIAK_PORT);
 			riak.getClientId();
+            Logger.info("Successfully connected to riak");
 			return true;
 		} catch (RiakException e) {
 			e.printStackTrace();

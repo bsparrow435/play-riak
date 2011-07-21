@@ -27,15 +27,6 @@ import com.basho.riak.client.query.MapReduceResult;
 import com.basho.riak.client.query.functions.NamedJSFunction;
 import com.basho.riak.client.query.functions.JSSourceFunction;
 
-//import com.basho.riak.pbc.KeySource;
-//import com.basho.riak.pbc.MapReduceResponseSource;
-//import com.basho.riak.pbc.RequestMeta;
-//import com.basho.riak.pbc.RiakLink;
-//import com.basho.riak.pbc.RiakObject;
-//import com.basho.riak.pbc.mapreduce.JavascriptFunction;
-//import com.basho.riak.pbc.mapreduce.MapReduceBuilder;
-//import com.basho.riak.pbc.mapreduce.MapReduceResponse;
-
 import com.google.gson.Gson;
 import com.google.protobuf.ByteString;
 
@@ -51,13 +42,15 @@ public class RiakModel {
 		this.obj = obj;
 	}
 	
-	//public Map<String,String> getUserMeta(){
-	//	return obj.getUsermeta();
-	//}
+	public Iterable<Map.Entry<String,String>> getUserMeta(){
+		return obj.userMetaEntries();
+	}
 	
-	//public void setUserMeta(Map<String,String> usermeta){
-	//	obj.setUserMeta(usermeta);
-	//}	
+	public void setUserMeta(Map<String,String> usermeta){
+		for(Map.Entry<String, String> entry : usermeta.entrySet()) {
+			obj.addUsermeta(entry.getKey(), entry.getValue());
+		}
+	}	
 	
 	public static String generateUID(){
 		return  String.valueOf(UUID.randomUUID());
@@ -97,7 +90,8 @@ public class RiakModel {
 				? RiakObjectBuilder.from(this.obj)
 				: RiakObjectBuilder.newBuilder(path.getBucket(), path.getKey());
 				
-			builder = builder.withValue(jsonValue).withContentType("text/json");
+			builder = builder.withValue(jsonValue);
+				//.withContentType("application/json");
 			
 			if(o != null && o.getLinks() != null)
 				builder.withLinks(o.getLinks());
