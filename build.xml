@@ -2,6 +2,10 @@
 
 <project name="riak" default="build" basedir=".">
 
+    <target name="check" unless="play.path">
+        <fail message="Please specify Play framework path using -Dplay.path=/path/to/framework/home" />
+    </target>
+
     <path id="project.classpath">
         <pathelement path="${play.path}/framework/classes"/>
         <fileset dir="${play.path}/framework/lib">

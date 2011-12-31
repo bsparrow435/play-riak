@@ -6,6 +6,9 @@ import play.Logger;
 import play.classloading.ApplicationClasses.ApplicationClass;
 import play.classloading.enhancers.Enhancer;
 
+import com.basho.riak.client.bucket.DomainBucket;
+import com.basho.riak.client.bucket.Bucket;
+
 public class RiakEnhancer extends Enhancer {
 
 	public static final String PACKAGE_NAME = "play.modules.riak";
@@ -41,6 +44,10 @@ public class RiakEnhancer extends Enhancer {
 		
 		// - Implement methods
 		Logger.debug( clazz.getName() + "-->enhancing RiakEntity-->" + ctClass.getName());
+
+        Bucket bucket = RiakPlugin.riak.createBucket("t").execute();
+
+        final DomainBucket dbucket = DomainBucket.builder(bucket, clazz).build();
 
 		// /!\WARNING/!\ Generics won't works in javassist, 
 		// hard to debug, 
@@ -82,29 +89,6 @@ public class RiakEnhancer extends Enhancer {
 				"return findAll(play.modules.riak.RiakPlugin.getBucketName(clazz));}",ctClass);
 		ctClass.addMethod(findAll2);
 
-		
-		CtMethod fetch = CtMethod.make("public static java.util.List fetch(Class clazz, java.lang.reflect.Type returnType, int start, int end){"+
-			"int[] array = new int[2];"+
-			"if(start != -1 && end != -1){"+
-				"array[0] = start;"+
-				"array[1] = end;"+
-			"}"+
-            "com.basho.riak.client.query.MapReduce mr = play.modules.riak.RiakPlugin.riak.mapReduce(play.modules.riak.RiakPlugin.getBucketName(clazz))"+
-			    ".addMapPhase(new com.basho.riak.client.query.functions.NamedJSFunction(\"Riak.mapValuesJson\"), false)"+
-			    ".addReducePhase(new com.basho.riak.client.query.functions.NamedJSFunction(\"Riak.reduceSlice\"), true);"+
-			"try {"+
-				"com.basho.riak.client.query.MapReduceResult mrs = mr.execute();"+
-                "String res = mrs.getResultRaw();"+
-                "if(!res.isEmpty()){"+
-                    "java.util.List jsonResult = new com.google.gson.Gson().fromJson(res, returnType);"+
-                    "return jsonResult;"+				
-				"}"+			
-			"}catch (com.basho.riak.client.RiakException e) {"+
-				"e.printStackTrace();"+
-			"}"+
-			"return null;}",ctClass);
-		ctClass.addMethod(fetch);
-		
 		// Done.
 		applicationClass.enhancedByteCode = ctClass.toBytecode(); 
 		ctClass.detach();
