@@ -17,96 +17,15 @@ import play.Play;
 import play.classloading.ApplicationClasses.ApplicationClass;
 
 import com.basho.riak.client.IRiakClient;
-import com.basho.riak.client.IRiakObject;
 import com.basho.riak.client.RiakException;
-import com.basho.riak.client.builders.RiakObjectBuilder;
-import com.basho.riak.client.RiakLink;
-
-import com.basho.riak.client.query.MapReduce;
-import com.basho.riak.client.query.MapReduceResult;
-import com.basho.riak.client.query.functions.NamedJSFunction;
-import com.basho.riak.client.query.functions.JSSourceFunction;
-
-import com.google.gson.Gson;
-import com.google.protobuf.ByteString;
+import com.basho.riak.client.bucket.Bucket;
 
 public class RiakModel {
-    // Raw object
-    private IRiakObject obj;
-
-    public String getBucket() {
-        return obj.getBucket();
-    }
-
-    public String getKey() {
-        return obj.getKey();
-    }
-
-    public IRiakObject getObj(){
-        return obj;
-    }
-    public void setObj(IRiakObject obj){
-        this.obj = obj;
-    }
-
-    public Iterable<Map.Entry<String,String>> getUserMeta(){
-        return obj.userMetaEntries();
-    }
-
-    public void setUserMeta(Map<String,String> usermeta){
-        for(Map.Entry<String, String> entry : usermeta.entrySet()) {
-            obj.addUsermeta(entry.getKey(), entry.getValue());
-        }
-    }
-
-    public static String generateUID(){
-        return String.valueOf(UUID.randomUUID());
-    }
+    public static Bucket bucket;
+    public static String keyField = "key";
 
     public boolean save() {
-        Logger.debug("RiakModel save %s", this.toString());
-
-        IRiakObject o = null;
-        // Hack to prevent serialisation of obj
-        if(this.obj != null){
-            o = this.obj;
-
-        }
-        this.obj = null;
-
-        String jsonValue = new Gson().toJson(this);
-        RiakPath path = this.getPath();
-
-        if(path != null){
-            Logger.debug("Create new object %s, %s", path.getBucket(), path.getValue());
-
-            RiakObjectBuilder builder = this.obj != null
-                ? RiakObjectBuilder.from(this.obj)
-                : RiakObjectBuilder.newBuilder(path.getBucket(), path.getKey());
-
-            builder = builder.withValue(jsonValue);
-                //.withContentType("application/json");
-
-            if(o != null && o.getLinks() != null)
-                builder.withLinks(o.getLinks());
-
-            this.obj = builder.build();
-
-            try {
-                this.obj = riak.fetchBucket(path.getBucket())
-                    .execute()
-                    .store(this.obj)
-                    .execute();
-                ;
-                return true;
-            } catch (RiakException e) {
-                Logger.error("Error during save of %s: %s", path.getKey(), jsonValue);
-                e.printStackTrace();
-                return false;
-            }
-        }else{
-            return false;
-        }
+        throw new UnsupportedOperationException("Please annotate your model with @RiakEntity annotation.");
     }
 
     public static <T extends RiakModel> List<T> findAll(Class clazz){
@@ -126,7 +45,7 @@ public class RiakModel {
         return findKeys(RiakPlugin.getBucketName(clazz)); 
     }
 
-    public static Iterable<String> findKeys(String bucket){
+    public static Iterable<String> findKeys(String bucket) {
         try {
             return riak.fetchBucket(bucket)
                 .execute()
@@ -162,18 +81,6 @@ public class RiakModel {
     }
 
     public boolean delete(){
-        RiakPath path = this.getPath();
-        if(path != null){
-            Logger.debug("Delete bucket: %s , keyValue %s", path.getBucket(), path.getValue());
-            delete(path.getBucket(), path.getValue());
-        }
-        return false;
-    }
-
-    public void addLink(Class clazz, String key, String tag){
-        this.addLink(RiakPlugin.getBucketName(clazz), key, tag);
-    }
-    public void addLink(String bucket, String key, String tag){
-        obj.addLink(new RiakLink(tag, bucket, key));
+        throw new UnsupportedOperationException("Please annotate your model with @RiakEntity annotation.");
     }
 }

@@ -4,5 +4,6 @@ eclipse
 .project
 dist
 play-riak-test/cobertura.ser
-play-riak-test/test-result
+play-riak-test/test-resulto
 play-riak-test/tmp
+tmp/

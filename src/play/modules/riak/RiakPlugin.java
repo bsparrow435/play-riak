@@ -37,16 +37,16 @@ public class RiakPlugin extends PlayPlugin{
     public static String DEFAULT_MODEL_PREFIX = "models.riak.";
     public static String MODEL_PREFIX;
 
-    //private RiakEnhancer enhancer = new RiakEnhancer();
+    private RiakEnhancer enhancer = new RiakEnhancer();
 
     public static String getBucketName(Class clazz){
         return clazz.getName();
     }
 
-    //@Override
-    //public void enhance(ApplicationClass applicationClass) throws Exception {
-    //    enhancer.enhanceThisClass(applicationClass);
-    //}
+    @Override
+    public void enhance(ApplicationClass applicationClass) throws Exception {
+        enhancer.enhanceThisClass(applicationClass);
+    }
 
     public boolean init() {
         RIAK_URL = Play.configuration.getProperty("riak.protobuf.url");
@@ -70,8 +70,7 @@ public class RiakPlugin extends PlayPlugin{
 
     @Override
     public void onApplicationStart() {
-        boolean res = init();
-        if(res == false)
+        if(!init())
             Logger.error("Riak %s cluster not responding !", RIAK_URL);
         else{
             // Retrieve key and bucket for all models
