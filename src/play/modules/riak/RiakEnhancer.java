@@ -31,82 +31,51 @@ public class RiakEnhancer extends Enhancer {
 
     /**
      * Enhance classes marked with the RiakEntity annotation.
-     * 
+     *
      * @param ctClass
      * @throws Exception
      */
     private void enhanceRiakEntity(CtClass ctClass, ApplicationClass applicationClass) throws Exception {
         // Don't need to fully qualify types when compiling methods below
         classPool.importPackage(PACKAGE_NAME);
-        String entityName = ctClass.getName();
-        Class clazz = this.getClass();
+        Class clazz = ctClass.toClass();
+        ctClass.defrost();
 
         RiakEntity annotation = (RiakEntity) clazz.getAnnotation(RiakEntity.class);
 
-        String key = annotation.key();
-        if (key.equals("")) {
-            Logger.error("Key for class %s is not defined", this.toString());
-        } else {
-            clazz.getDeclaredField("keyField").set(this, key);
-
-            String bucketName = annotation.bucket();
-            if(bucketName.equals("")){
-                bucketName = entityName;
-                bucketName = bucketName.substring(bucketName.lastIndexOf(".") + 1);
-            }
-            Bucket bucket = RiakPlugin.riak.createBucket(bucketName).execute();
-            clazz.getDeclaredField("bucket").set(this, bucket);
+        if (annotation == null) {
+            Logger.error("Annotation missing: %s", this.toString());
+            return;
         }
 
         // - Implement methods
-        Logger.debug( clazz.getName() + "-->enhancing RiakEntity-->" + ctClass.getName());
+        Logger.debug(this.getClass().getName() + "-->enhancing RiakEntity-->" + ctClass.getName());
 
-        CtMethod save = CtMethod.make("public void save() {" +
+        /*String saveMethod = "public boolean save() {" +
             "try {" +
-                "this.bucket.store(this." + key + ", this).execute();" +
+                "bucket.store(this.getKey(), this).execute();" +
+                "return true;" +
+            "} catch (Exception e) {" +
+                "e.printStackTrace();" +
+                "return false;" +
+            "}" +
+        "}";
+        CtMethod save = CtMethod.make(saveMethod, ctClass);
+        ctClass.addMethod(save);*/
+
+        String findMethod = "public static RiakModel find(String key) {" +
+            "try {" +
+                "return (RiakModel)bucket.fetch(key, " + clazz.getName() + ".class).execute();" +
             "} catch(com.basho.riak.client.RiakException e1){" +
                 "e1.printStackTrace();" +
-            "}", ctClass);
-        ctClass.addMethod(save);
-
-        CtMethod find = CtMethod.make("public static RiakModel find(String bucket, String key){" +
-            "try {" +
-                "com.basho.riak.client.IRiakObject ro = play.modules.riak.RiakPlugin.riak.fetchBucket(bucket).execute().fetch(key).execute();" +
-                "if(ro != null){" +
-                    entityName +" e = (" + entityName + ")new com.google.gson.Gson().fromJson(ro.getValueAsString(), " +
-                    entityName +".class);" +
-                    "e.setObj(ro);" +
-                    "return e;" +
-                "}" +
-            "} catch(com.basho.riak.client.RiakException e1){" +
-                "e1.printStackTrace();" +
-            "}"+
-            "return null;}", ctClass);
+                "return null;" +
+            "}" +
+        "}";
+        CtMethod find = CtMethod.make(findMethod, ctClass);
         ctClass.addMethod(find);
 
-
-        CtMethod find2 = CtMethod.make("public static RiakModel find(Class clazz, String key){" +
-                "return find(play.modules.riak.RiakPlugin.getBucketName(clazz), key); }",ctClass);
-        ctClass.addMethod(find2);
-
-        CtMethod findAll = CtMethod.make("public static java.util.List findAll(String bucket){" +
-                "java.util.Collection keys = "+ entityName + ".findKeys(bucket);" +
-                "java.util.List result = new java.util.ArrayList();"+
-                "for (java.util.Iterator iterator = keys.iterator(); iterator.hasNext();) {"+
-                    "String key = (String) iterator.next();"+
-                    "result.add(find(bucket,key));"+
-                "}"+
-                "return result;}", ctClass);
-
-        ctClass.addMethod(findAll);
-
-
-        CtMethod findAll2 = CtMethod.make("public static java.util.List findAll(Class clazz){" +
-                "return findAll(play.modules.riak.RiakPlugin.getBucketName(clazz));}",ctClass);
-        ctClass.addMethod(findAll2);
-
         // Done.
-        applicationClass.enhancedByteCode = ctClass.toBytecode(); 
+        applicationClass.enhancedByteCode = ctClass.toBytecode();
         ctClass.detach();
     }
 }

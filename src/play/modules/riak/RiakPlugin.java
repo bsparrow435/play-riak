@@ -9,11 +9,12 @@ import play.Play;
 import play.PlayPlugin;
 import play.classloading.ApplicationClasses.ApplicationClass;
 
+import com.basho.riak.client.bucket.Bucket;
 import com.basho.riak.client.RiakFactory;
 import com.basho.riak.client.IRiakClient;
 import com.basho.riak.client.RiakException;
 
-public class RiakPlugin extends PlayPlugin{
+public class RiakPlugin extends PlayPlugin {
 
     /**
      * riak url like http://localhost:8091/riak
@@ -39,8 +40,8 @@ public class RiakPlugin extends PlayPlugin{
 
     private RiakEnhancer enhancer = new RiakEnhancer();
 
-    public static String getBucketName(Class clazz){
-        return clazz.getName();
+    public static String getBucketName(Class clazz) throws Exception {
+        return ((Bucket)clazz.getField("bucket").get(null)).getName();
     }
 
     @Override
@@ -51,7 +52,7 @@ public class RiakPlugin extends PlayPlugin{
     public boolean init() {
         RIAK_URL = Play.configuration.getProperty("riak.protobuf.url");
         RIAK_PORT = Integer.valueOf(Play.configuration.getProperty("riak.protobuf.port"));
-        if(RIAK_URL.isEmpty() ||RIAK_PORT == 0){
+        if(RIAK_URL.isEmpty() || RIAK_PORT == 0){
             Logger.error("riak.protobuf.url or riak.protobuf.port is empty");
             return false;
         }
@@ -70,26 +71,45 @@ public class RiakPlugin extends PlayPlugin{
 
     @Override
     public void onApplicationStart() {
-        if(!init())
-            Logger.error("Riak %s cluster not responding !", RIAK_URL);
-        else{
-            // Retrieve key and bucket for all models
-            List<ApplicationClass> classes = Play.classes.getAnnotatedClasses(RiakEntity.class);
-            for (ApplicationClass clazz : classes) {
-                RiakEntity annotation = (RiakEntity) clazz.javaClass.getAnnotation(RiakEntity.class);
+        if(!init()) Logger.error("Riak %s cluster not responding !", RIAK_URL);
 
-                String key = annotation.key();
-                String entityName = clazz.javaClass.getName();
+        List<ApplicationClass> classes = Play.classes.getAnnotatedClasses(RiakEntity.class);
+        for (ApplicationClass aclazz : classes) {
+            Class clazz = aclazz.javaClass;
+            String entityName = clazz.getName();
 
-                if (key.equals("")) {
-                    Logger.error("Key for class %s is not defined", this.toString());
-                } else {
-                    String bucket = annotation.bucket();
-                    if(bucket.equals("")){
-                        bucket = entityName;
-                        bucket = bucket.substring(bucket.lastIndexOf(".") + 1);
-                    }
-                }
+            RiakEntity annotation = (RiakEntity) clazz.getAnnotation(RiakEntity.class);
+
+            String key = annotation.key();
+            if (key.equals("")) {
+                Logger.error("Key for class %s is not defined.", this.toString());
+                key = "key";
+            }
+
+            try {
+                clazz.getField("keyField").set(null, key);
+            } catch (Exception e) {
+                Logger.error("Issue setting keyField of %s.", entityName);
+            }
+
+            String bucketName = annotation.bucket();
+            if (bucketName.equals("")) {
+                bucketName = entityName;
+                bucketName = bucketName.substring(bucketName.lastIndexOf(".") + 1);
+            }
+
+            Bucket bucket;
+            try {
+                bucket = RiakPlugin.riak.createBucket(bucketName).execute();
+            } catch (RiakException e) {
+                Logger.error("Enable to create bucket for %s.", entityName);
+                return;
+            }
+
+            try {
+                clazz.getField("bucket").set(null, bucket);
+            } catch (Exception e) {
+                Logger.error("Issue setting bucket of %s.", entityName);
             }
         }
     }

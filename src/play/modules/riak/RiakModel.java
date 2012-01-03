@@ -22,65 +22,35 @@ import com.basho.riak.client.bucket.Bucket;
 
 public class RiakModel {
     public static Bucket bucket;
-    public static String keyField = "key";
+    public static String keyField;
 
-    public boolean save() {
-        throw new UnsupportedOperationException("Please annotate your model with @RiakEntity annotation.");
+    public String key;
+
+    public String getKey() throws Exception {
+        return (String)(this.getClass().getDeclaredField(keyField).get(this));
     }
 
-    public static <T extends RiakModel> List<T> findAll(Class clazz){
-        throw new UnsupportedOperationException("Please annotate your model with @RiakEntity annotation.");
-    }
-
-    public static <T extends RiakModel> List<T> findAll(String bucket){
-        throw new UnsupportedOperationException("Please annotate your model with @RiakEntity annotation.");
-    }
-
-    //TODO: fix in enhancer
-    public static <T extends RiakModel> List<T> fetch(Class clazz, Type returnType, int start, int end){
-        throw new UnsupportedOperationException("Please annotate your model with @RiakEntity annotation.");
-    }
-
-    public static Iterable<String> findKeys(Class clazz){
-        return findKeys(RiakPlugin.getBucketName(clazz)); 
-    }
-
-    public static Iterable<String> findKeys(String bucket) {
+    public boolean save() throws Exception {
         try {
-            return riak.fetchBucket(bucket)
-                .execute()
-                .keys();
+            bucket.store(this.getKey(), this).execute();
+            return true;
         } catch (RiakException e) {
-            Logger.error("Error during listKeys for bucket: %s", bucket);
+            Logger.error("Error during save for bucket: %s", this.getKey());
             e.printStackTrace();
-            return null;
+            return false;
         }
     }
 
-    public static <T extends RiakModel> T find(Class clazz, String key){
-        throw new UnsupportedOperationException("Please annotate your model with @RiakEntity annotation.");
-    }
-    public static <T extends RiakModel> T find(String bucket, String key){
-        throw new UnsupportedOperationException("Please annotate your model with @RiakEntity annotation.");
-    }
-
-    public static void delete(Class clazz, String key){
-        delete(RiakPlugin.getBucketName(clazz), key);
-    }
-
-    public static void delete(String bucket, String key){
+    public boolean delete() throws Exception {
         try {
-            riak.fetchBucket(bucket)
-                .execute()
-                .delete(key)
-                .execute();
+            bucket.delete(this.getKey()).execute();
+            return true;
         } catch (RiakException e) {
-            Logger.error("Error during deletion of bucket: %s, key: %s", bucket, key);
-            e.printStackTrace();
+            return false;
         }
     }
 
-    public boolean delete(){
+    public static <T extends RiakModel> T find(String key) {
         throw new UnsupportedOperationException("Please annotate your model with @RiakEntity annotation.");
     }
 }
