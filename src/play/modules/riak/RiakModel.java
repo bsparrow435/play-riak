@@ -26,11 +26,15 @@ public class RiakModel {
 
     public String key;
 
-    public String getKey() throws Exception {
-        return (String)(this.getClass().getDeclaredField(keyField).get(this));
+    public String getKey() {
+        try {
+            return (String)(this.getClass().getDeclaredField(keyField).get(this));
+        } catch (Exception e) {
+            return null;
+        }
     }
 
-    public boolean save() throws Exception {
+    public boolean save() {
         try {
             bucket.store(this.getKey(), this).execute();
             return true;
@@ -41,7 +45,7 @@ public class RiakModel {
         }
     }
 
-    public boolean delete() throws Exception {
+    public boolean delete() {
         try {
             bucket.delete(this.getKey()).execute();
             return true;
