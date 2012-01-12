@@ -24,8 +24,7 @@ public class RiakModel {
     public static Bucket bucket;
     public static String keyField;
 
-    public String key;
-
+    @org.codehaus.jackson.annotate.JsonIgnore
     public String getKey() {
         try {
             return (String)(this.getClass().getDeclaredField(keyField).get(this));
